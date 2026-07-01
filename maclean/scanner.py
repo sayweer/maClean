@@ -267,6 +267,12 @@ def _classify(
     if entry.name.lower() in constants.KNOWN_TOOL_CACHES:
         return []
 
+    # Klasör adı görünen addan sapan bilinen uygulama (ör. VS Code -> "Code"):
+    # eşlenen bundle-id yüklüyse öksüz değil; yüklü değilse normal mantık işler.
+    alias_id = constants.KNOWN_APP_DATA_ALIASES.get(entry.name.lower())
+    if alias_id is not None and alias_id in installed_ids:
+        return []
+
     candidate = _strip_suffixes(entry.name)
     cautious = category in constants.CAUTIOUS_LOCATIONS
     lookup = _strip_group_prefix(candidate) if cautious else candidate
@@ -283,6 +289,12 @@ def _classify(
             return []  # yüklü uygulamanın yardımcısı/güncelleyicisi (alt-namespace)
         if cautious and _has_installed_suffix(lower, installed_ids):
             return []  # takım-kimliği önekli ama alttaki uygulama yüklü
+        # Kısa, bundle-id GÖRÜNÜMLÜ adlar aslında uygulama adı olabilir:
+        # Zoom yüklüyken "zoom.us" klasörü desene uyar ama kimlik değildir
+        # (gerçek kimlik us.zoom.xos). Yüklü bir uygulama adıyla eşleşiyorsa
+        # öksüz sayma — bu veto yalnızca işaretlemeyi engeller, asla eklemez.
+        if _fuzzy_matches_installed([_normalize(lookup)], installed_norms):
+            return []
         return _build_item(
             entry, category, _prettify_bundle_id(lookup), lower,
             MatchConfidence.BUNDLE_ID, base_resolved,
@@ -296,6 +308,10 @@ def _classify(
         candidate_norms = [_normalize(candidate)]
         if vendor_prefix:
             candidate_norms.append(_normalize(f"{vendor_prefix} {candidate}"))
+        if not any(candidate_norms):
+            # Ad tamamen latin-alfanümerik dışı (ör. Korece/Çince uygulama):
+            # normalizasyon boş kaldı, karşılaştıracak sinyal yok → karar verme.
+            return []
         if _fuzzy_matches_installed(candidate_norms, installed_norms):
             return []  # yüklü bir uygulamayla eşleşti → öksüz değil
         display = f"{vendor_prefix} — {candidate}" if vendor_prefix else candidate

@@ -281,6 +281,67 @@ def test_version_numbered_name_not_treated_as_bundle_id(tmp_path, residue_factor
     assert "AndroidStudio2024.3.2" in item.display_name  # anlamlı ad, "2" değil
 
 
+def test_bundle_id_looking_app_name_of_installed_app_not_orphan(
+    tmp_path, residue_factory
+):
+    """Bundle-id GÖRÜNÜMLÜ ad (zoom.us) yüklü uygulama adıyla eşleşiyorsa öksüz değil.
+
+    Zoom'un veri klasörü 'zoom.us' desene uyar ama gerçek kimliği us.zoom.xos'tur;
+    fuzzy veto olmadan yüksek güvenle yanlış işaretlenirdi.
+    """
+    lib = tmp_path / "Library"
+    residue_factory(lib, "Application Support", "zoom.us")
+
+    orphans = scanner.find_orphans({"us.zoom.xos"}, {"zoom.us"}, library_root=lib)
+
+    assert orphans == []
+
+
+def test_bundle_id_looking_name_without_matching_app_still_orphan(
+    tmp_path, residue_factory
+):
+    """Zoom silinmişse aynı 'zoom.us' klasörü yine öksüz tespit edilmeli."""
+    lib = tmp_path / "Library"
+    residue_factory(lib, "Application Support", "zoom.us")
+
+    orphans = scanner.find_orphans(set(), {"Spotify"}, library_root=lib)
+
+    assert "zoom.us" in _orphan_names(orphans)
+
+
+def test_known_alias_folder_of_installed_app_not_orphan(tmp_path, residue_factory):
+    """Alias: VS Code yüklüyken 'Code' klasörü öksüz sayılmaz."""
+    lib = tmp_path / "Library"
+    residue_factory(lib, "Application Support", "Code")
+
+    orphans = scanner.find_orphans(
+        {"com.microsoft.vscode"}, {"Visual Studio Code"}, library_root=lib,
+    )
+
+    assert orphans == []
+
+
+def test_known_alias_folder_without_app_still_orphan(tmp_path, residue_factory):
+    """Alias yalnızca uygulama yüklüyken korur; VS Code silinmişse 'Code' öksüzdür."""
+    lib = tmp_path / "Library"
+    residue_factory(lib, "Application Support", "Code")
+
+    orphans = scanner.find_orphans(set(), {"Spotify"}, library_root=lib)
+
+    item = next(o for o in orphans if o.path.name == "Code")
+    assert item.confidence is MatchConfidence.NAME_FUZZY
+
+
+def test_non_latin_name_is_skipped(tmp_path, residue_factory):
+    """Tamamen latin-dışı ad normalizasyonda boş kalır → sinyalsiz, karar verilmez."""
+    lib = tmp_path / "Library"
+    residue_factory(lib, "Application Support", "카카오톡")
+
+    orphans = scanner.find_orphans(set(), {"Spotify"}, library_root=lib)
+
+    assert orphans == []
+
+
 def test_symlink_escaping_library_is_skipped(tmp_path, residue_factory):
     """Savunma katmanı: ~/Library dışına işaret eden sembolik link elenir."""
     lib = tmp_path / "Library"

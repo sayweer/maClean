@@ -163,6 +163,16 @@ class App(ctk.CTk):
         """Arka plan thread'i — burada ASLA widget'a dokunulmaz."""
         try:
             installed_ids, name_by_id = scanner.discover_installed_apps()
+            if not installed_ids:
+                # Güvenlik sigortası: yüklü set boşsa (/Applications okunamadı
+                # vb.) HER ŞEY öksüz görünür. Yanlış silmeye yol açmamak için
+                # tarama sonuç üretmeden durdurulur.
+                self._queue.put((
+                    "error",
+                    "Yüklü uygulama tespit edilemedi (/Applications okunamamış "
+                    "olabilir). Yanlış tespitleri önlemek için tarama durduruldu.",
+                ))
+                return
             orphans = scanner.find_orphans(
                 installed_ids, set(name_by_id.values()),
                 progress_callback=lambda loc: self._queue.put(("progress", loc)),

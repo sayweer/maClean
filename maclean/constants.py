@@ -99,3 +99,16 @@ KNOWN_TOOL_CACHES = frozenset({
     "go", "go-build", "deno", "cargo", "typescript",
     "ms-playwright", "ms-playwright-go", "puppeteer",
 })
+
+# Klasör adı görünen addan çok farklı olan bilinen uygulamalar (küçük harf
+# klasör adı -> küçük harf bundle-id). Fuzzy eşleşmenin yakalayamadığı yaygın
+# durumlar: ör. VS Code verisini "Code" klasöründe tutar ("code" ↔
+# "visualstudiocode" benzerliği eşiğin çok altında). Eşlenen bundle-id
+# YÜKLÜYSE öğe atlanır; yüklü değilse normal mantık işler (gerçek öksüz
+# yine tespit edilir). KNOWN_TOOL_CACHES gibi bilinçli olarak kısa tutulur.
+KNOWN_APP_DATA_ALIASES: dict[str, str] = {
+    "code": "com.microsoft.vscode",
+    "obs-studio": "com.obsproject.obs-studio",
+    "bravesoftware": "com.brave.browser",
+    "docker desktop": "com.docker.docker",
+}
