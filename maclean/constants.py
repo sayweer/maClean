@@ -89,3 +89,13 @@ STRIP_SUFFIXES = (".savedState", ".binarycookies", ".plist")
 # Group Containers adlarındaki bilinen önek (soyulup bundle-id olarak denenir):
 # "group.com.foo.bar" -> "com.foo.bar".
 GROUP_CONTAINER_PREFIXES = ("group.",)
+
+# Bilinen geliştirici aracı / paket yöneticisi önbellekleri. Bunlar silinmiş
+# uygulama kalıntısı DEĞİL, aktif kullanılan araçların önbellekleridir; adı
+# (küçük harf) bu kümede olan öğe asla öksüz önerilmez. Liste bilinçli olarak
+# kısa tutulur — kapsamlı olmak hedeflenmez, en sık rastlanan gürültü elenir.
+KNOWN_TOOL_CACHES = frozenset({
+    "pip", "homebrew", "node-gyp", "npm", "yarn", "pnpm",
+    "go", "go-build", "deno", "cargo", "typescript",
+    "ms-playwright", "ms-playwright-go", "puppeteer",
+})

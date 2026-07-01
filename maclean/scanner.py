@@ -114,6 +114,16 @@ def _strip_group_prefix(name: str) -> str:
     return name
 
 
+def _looks_like_version(text: str) -> bool:
+    """Nokta içeren ama gerçek bundle-id olmayan sürüm/isim adını yakalar.
+
+    'AndroidStudio2024.3.2' gibi adlar noktalar yüzünden bundle-id desenine
+    uyar ama değildir. Gerçek reverse-DNS bundle-id'lerinde tamamen sayısal
+    segment (ör. '.3', '.2') pratikte bulunmaz; sürüm klasörlerinde bulunur.
+    """
+    return any(segment.isdigit() for segment in text.split("."))
+
+
 def _prettify_bundle_id(bundle_id: str) -> str:
     """Bundle-id'nin son segmentinden okunabilir bir ad tahmin eder.
 
@@ -253,12 +263,16 @@ def _classify(
     vendor_prefix: str | None = None,
 ) -> list[OrphanItem]:
     """Tek bir kalıntı adayını sınıflandırır: öksüzse OrphanItem, değilse boş liste."""
+    # Bilinen geliştirici aracı önbelleği ise hiç değerlendirme (asla önerme).
+    if entry.name.lower() in constants.KNOWN_TOOL_CACHES:
+        return []
+
     candidate = _strip_suffixes(entry.name)
     cautious = category in constants.CAUTIOUS_LOCATIONS
     lookup = _strip_group_prefix(candidate) if cautious else candidate
 
     # --- Strateji A: bundle-id eşleşmesi ---
-    if constants.BUNDLE_ID_PATTERN.match(lookup):
+    if constants.BUNDLE_ID_PATTERN.match(lookup) and not _looks_like_version(lookup):
         lower = lookup.lower()
         # Son koruma katmanı: Apple sistem bileşenlerine asla dokunma.
         if lower.startswith(constants.PROTECTED_BUNDLE_PREFIXES):

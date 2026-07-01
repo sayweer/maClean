@@ -251,6 +251,36 @@ def test_orphan_reports_directory_size(tmp_path, residue_factory):
     assert item.size_bytes >= 4096
 
 
+def test_known_tool_cache_never_flagged(tmp_path, residue_factory):
+    """Denylist: pip/Homebrew gibi araç önbellekleri asla öksüz önerilmez."""
+    lib = tmp_path / "Library"
+    residue_factory(lib, "Caches", "pip")
+    residue_factory(lib, "Caches", "Homebrew")
+    residue_factory(lib, "Caches", "ms-playwright-go")
+
+    orphans = scanner.find_orphans(set(), set(), library_root=lib)
+
+    assert orphans == []
+
+
+def test_version_numbered_name_not_treated_as_bundle_id(tmp_path, residue_factory):
+    """Sürüm numaralı klasör adı (AndroidStudio2024.3.2) bundle-id sanılmaz.
+
+    Google şemsiyesi altında olduğundan isim bazlı değerlendirilir; anlamlı
+    bir görünen ad alır ve düşük-güven (NAME_FUZZY) olarak işaretlenir — asla
+    '2' gibi anlamsız bir bundle-id adı almaz.
+    """
+    lib = tmp_path / "Library"
+    residue_factory(lib, "Caches", "Google/AndroidStudio2024.3.2")
+
+    orphans = scanner.find_orphans(set(), {"Android Studio"}, library_root=lib)
+
+    item = next(o for o in orphans if o.path.name == "AndroidStudio2024.3.2")
+    assert item.confidence is MatchConfidence.NAME_FUZZY
+    assert item.bundle_id is None
+    assert "AndroidStudio2024.3.2" in item.display_name  # anlamlı ad, "2" değil
+
+
 def test_symlink_escaping_library_is_skipped(tmp_path, residue_factory):
     """Savunma katmanı: ~/Library dışına işaret eden sembolik link elenir."""
     lib = tmp_path / "Library"
