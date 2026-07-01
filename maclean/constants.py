@@ -81,3 +81,11 @@ VENDOR_UMBRELLA_FOLDERS = frozenset({
 
 # difflib.SequenceMatcher.ratio() için isim eşleşme eşiği.
 FUZZY_MATCH_THRESHOLD = 0.85
+
+# Kalıntı adlarından soyulup alttaki bundle-id'yi ortaya çıkaran uzantılar
+# (ör. "com.foo.bar.plist" -> "com.foo.bar", "...savedState" -> "...").
+STRIP_SUFFIXES = (".savedState", ".binarycookies", ".plist")
+
+# Group Containers adlarındaki bilinen önek (soyulup bundle-id olarak denenir):
+# "group.com.foo.bar" -> "com.foo.bar".
+GROUP_CONTAINER_PREFIXES = ("group.",)
