@@ -1,3 +1,2 @@
 customtkinter
 send2trash
-psutil
