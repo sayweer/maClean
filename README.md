@@ -51,8 +51,12 @@ maClean güvenliği önceleyecek şekilde tasarlandı:
 
 ### Seçenek A — Hazır uygulamayı indir (en kolay)
 
-1. [Releases](../../releases) sayfasından en son `maClean.app.zip` dosyasını
-   indirin ve çıkarın.
+> **Gereksinim:** Apple Silicon (M1/M2/M3/M4) Mac. Hazır uygulama arm64 için
+> paketlenmiştir; **Intel Mac'lerde çalışmaz** — Intel kullanıyorsanız aşağıdaki
+> **Seçenek B** ile kaynaktan çalıştırın.
+
+1. [Releases](../../releases) sayfasından en son
+   **`maClean-0.1.0-macos-arm64.zip`** dosyasını indirin ve çıkarın.
 2. `maClean.app`'i `Uygulamalar` klasörüne taşıyın.
 3. **İlk açılışta Gatekeeper uyarısı** göreceksiniz. Bunun nedeni uygulamanın
    ücretli bir Apple Developer sertifikasıyla imzalanmamış olmasıdır (açık
