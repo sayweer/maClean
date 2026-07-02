@@ -56,7 +56,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name="maClean.app",
-    icon=None,                  # ikon opsiyonel; yoksa PyInstaller varsayılanı
+    icon="assets/maclean.icns", # özel uygulama ikonu
     bundle_identifier="com.seyit.maclean",
     info_plist={
         "CFBundleName": "maClean",
