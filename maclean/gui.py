@@ -15,7 +15,12 @@ from pathlib import Path
 import customtkinter as ctk
 
 from . import scanner, trash
-from .models import MatchConfidence, OrphanItem, human_readable_size
+from .models import (
+    MatchConfidence,
+    OrphanItem,
+    build_trash_banner,
+    human_readable_size,
+)
 
 # --- Renk paleti (colorhunt) ---------------------------------------------
 CREAM = "#FBF5DD"       # ana arka plan
@@ -448,8 +453,9 @@ class App(ctk.CTk):
         # Başarıyla taşınanları listeden çıkar.
         self.orphans = [o for o in self.orphans if o.path not in moved_paths]
 
-        message = f"✓ {len(succeeded)} öğe Çöp Kutusu'na taşındı · {freed} boşaltıldı."
-        if failed:
-            message += f"\n⚠ {len(failed)} öğe taşınamadı (izin veya erişim hatası)."
-        self._banner = message
+        # Taşınamayan yolları OrphanItem'larına eşle; kategori bilgisi, banner'ın
+        # Tam Disk Erişimi yönlendirmesi gösterip göstermeyeceğini belirler.
+        item_by_path = {o.path: o for o in selected}
+        failed_items = [item_by_path[p] for p, _ in failed if p in item_by_path]
+        self._banner = build_trash_banner(len(succeeded), freed, failed_items)
         self._render_results()

@@ -66,3 +66,46 @@ def human_readable_size(size_bytes: int) -> str:
             return f"{size:.1f} {unit}"
         size /= 1024
     return f"{size:.1f} TB"  # erişilemez; tip denetleyicisi için
+
+
+# macOS'un TCC gizlilik koruması altındaki konumlar. Bu kategorilerdeki
+# kalıntıları Çöp'e taşımak "Tam Disk Erişimi" izni gerektirir; izin yoksa
+# taşıma yerelleştirilmiş bir OSError ile başarısız olur (send2trash mac
+# backend hatayı localizedFailureReason() ile fırlatır). Tespiti hata METNİNE
+# değil KONUMA dayandırıyoruz — metin dile göre değişir, konum değişmez.
+FULL_DISK_ACCESS_CATEGORIES = frozenset(
+    {ResidueCategory.CONTAINERS, ResidueCategory.GROUP_CONTAINERS}
+)
+
+
+def build_trash_banner(
+    succeeded_count: int,
+    freed: str,
+    failed_items: list[OrphanItem],
+) -> str:
+    """Çöp'e taşıma sonucu için kullanıcıya gösterilecek özet metnini üretir.
+
+    Saf fonksiyon (GUI'siz, test edilebilir). Başarısızlıklar arasında TCC ile
+    korunan bir konum (Containers / Group Containers) varsa, genel bir "izin
+    hatası" yerine kullanıcıya Tam Disk Erişimi için eyleme geçirilebilir
+    yönlendirme gösterir.
+    """
+    lines = [
+        f"✓ {succeeded_count} öğe Çöp Kutusu'na taşındı · {freed} boşaltıldı."
+    ]
+    if failed_items:
+        needs_full_disk_access = any(
+            item.category in FULL_DISK_ACCESS_CATEGORIES for item in failed_items
+        )
+        if needs_full_disk_access:
+            lines.append(
+                f"⚠ {len(failed_items)} öğe taşınamadı. Bu öğeler için macOS'un "
+                "Tam Disk Erişimi izni gerekiyor: Sistem Ayarları → Gizlilik ve "
+                "Güvenlik → Tam Disk Erişimi → maClean'e izin verin, sonra "
+                "uygulamayı yeniden başlatıp tekrar deneyin."
+            )
+        else:
+            lines.append(
+                f"⚠ {len(failed_items)} öğe taşınamadı (izin veya erişim hatası)."
+            )
+    return "\n".join(lines)
