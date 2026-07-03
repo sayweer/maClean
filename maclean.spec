@@ -61,8 +61,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "maClean",
         "CFBundleDisplayName": "maClean",
-        "CFBundleShortVersionString": "0.1.0",
-        "CFBundleVersion": "0.1.0",
+        "CFBundleShortVersionString": "0.1.1",
+        "CFBundleVersion": "0.1.1",
         "NSHumanReadableCopyright": "© 2026 Seyit — MIT License",
         "NSHighResolutionCapable": True,
     },
