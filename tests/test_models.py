@@ -14,8 +14,8 @@ from maclean.models import (
 )
 
 
-def test_orphan_item_defaults_to_unselected():
-    """Güvenlik gereği: yeni bir OrphanItem varsayılan olarak seçili DEĞİLdir."""
+def test_orphan_item_selection_is_not_domain_state():
+    """Seçim GUI/controller durumudur; alan modelinde tutulmaz."""
     item = OrphanItem(
         display_name="Deleted App",
         bundle_id="com.example.deletedapp",
@@ -25,7 +25,8 @@ def test_orphan_item_defaults_to_unselected():
         last_modified=datetime(2024, 1, 1),
         confidence=MatchConfidence.BUNDLE_ID,
     )
-    assert item.selected is False
+    assert not hasattr(item, "selected")
+    assert item.selectable is False
 
 
 def test_scan_locations_cover_every_category():
@@ -52,6 +53,7 @@ def test_human_readable_size():
     assert human_readable_size(1536) == "1.5 KB"
     assert human_readable_size(5 * 1024 * 1024) == "5.0 MB"
     assert human_readable_size(3 * 1024**3) == "3.0 GB"
+    assert human_readable_size(None) == "Bilinmiyor"
 
 
 def _make_item(category: ResidueCategory, name: str = "App") -> OrphanItem:
@@ -88,6 +90,7 @@ def test_banner_tcc_failure_shows_full_disk_access_guidance():
     assert "Tam Disk Erişimi" in banner
     assert "Gizlilik ve Güvenlik" in banner
     assert "1 öğe taşınamadı" in banner
+    assert not banner.startswith("✓")
 
 
 def test_banner_generic_failure_has_no_fda_guidance():

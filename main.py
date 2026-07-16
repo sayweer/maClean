@@ -10,8 +10,7 @@ from maclean.gui import App
 
 
 def main() -> None:
-    # Palet sıcak/açık tonlarda olduğundan sabit "Light" görünüm kullanılır.
-    ctk.set_appearance_mode("Light")
+    ctk.set_appearance_mode("System")
     app = App()
     app.mainloop()
 

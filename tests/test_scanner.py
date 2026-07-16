@@ -202,17 +202,14 @@ def test_sibling_bundle_id_still_orphaned(tmp_path, residue_factory):
     assert "com.foo.baz" in _orphan_names(orphans)
 
 
-def test_group_prefixed_orphan_detected(tmp_path, residue_factory):
-    """'group.' önekli, karşılığı olmayan container öksüz tespit edilir."""
+def test_group_containers_are_excluded_from_legacy_scan(tmp_path, residue_factory):
+    """Paylaşılan Group Containers eski heuristik taramada hiç önerilmez."""
     lib = tmp_path / "Library"
     residue_factory(lib, "Group Containers", "group.com.example.deletedapp")
 
     orphans = scanner.find_orphans(set(), set(), library_root=lib)
 
-    item = next(
-        o for o in orphans if o.path.name == "group.com.example.deletedapp"
-    )
-    assert item.bundle_id == "com.example.deletedapp"
+    assert orphans == []
 
 
 def test_cautious_location_non_bundle_name_skipped(tmp_path, residue_factory):
@@ -332,14 +329,17 @@ def test_known_alias_folder_without_app_still_orphan(tmp_path, residue_factory):
     assert item.confidence is MatchConfidence.NAME_FUZZY
 
 
-def test_non_latin_name_is_skipped(tmp_path, residue_factory):
-    """Tamamen latin-dışı ad normalizasyonda boş kalır → sinyalsiz, karar verilmez."""
+def test_non_latin_name_is_review_only(tmp_path, residue_factory):
+    """Unicode ad korunur; yalnız kanıtsız ve seçimsiz inceleme adayıdır."""
     lib = tmp_path / "Library"
     residue_factory(lib, "Application Support", "카카오톡")
 
     orphans = scanner.find_orphans(set(), {"Spotify"}, library_root=lib)
 
-    assert orphans == []
+    assert len(orphans) == 1
+    assert orphans[0].display_name == "카카오톡"
+    assert orphans[0].confidence is MatchConfidence.NAME_FUZZY
+    assert orphans[0].selectable is False
 
 
 def test_symlink_escaping_library_is_skipped(tmp_path, residue_factory):
