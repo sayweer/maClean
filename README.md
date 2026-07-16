@@ -1,151 +1,129 @@
 # maClean
 
-macOS'ta sildiğiniz uygulamaların geride bıraktığı **öksüz önbellek, ayar ve
-log dosyalarını** bulup güvenle Çöp Kutusu'na taşıyan, basit ve ücretsiz bir
-açık kaynak araç.
+maClean, macOS uygulamalarını ilişkili dosyalarıyla birlikte güvenli biçimde
+kaldıran ve daha önce silinmiş uygulamalardan kalmış olabilecek dosyaları
+incelemenize yardım eden ücretsiz, açık kaynak bir araçtır.
 
-Bir uygulamayı Çöp'e attığınızda, ona ait veriler çoğu zaman
-`~/Library/Caches`, `~/Library/Application Support`, `~/Library/Preferences`
-gibi klasörlerde kalır. Zamanla bu "öksüz" dosyalar birikip disk alanınızı
-doldurur. maClean bunları bulur — ama **hiçbir şeyi kalıcı silmez**, yalnızca
-Çöp Kutusu'na taşır; yani her işlem geri alınabilir.
+Hiçbir dosyayı kalıcı olarak silmez. Uygulama paketleri ve seçtiğiniz ilişkili
+öğeler macOS Çöp Kutusu'na taşınır.
 
-> CleanMyMac gibi ücretli araçlara alternatif olarak, tek bir işe odaklanan
-> küçük ve şeffaf bir araç.
+## Neler yapar?
 
----
+### Uygulama Kaldır
 
-## Özellikler
+Kurulu uygulamaları aranabilir bir listede gösterir. Bir uygulama seçildiğinde
+ana bundle kimliği, yardımcı `.app`, `.appex` ve `.xpc` kimlikleri ile
+okunabilen application-group yetkileri kullanılarak ilişkili dosyalar
+doğrulanır.
 
-- Silinmiş uygulamaların `~/Library` altındaki kalıntılarını tespit eder
-  (Caches, Application Support, Preferences, Logs, Containers, Saved State,
-  Group Containers, WebKit, HTTPStorages, Application Scripts).
-- **İki katmanlı sonuç:** kimliğiyle kesin eşleşen kalıntılar ("Uygulama
-  kalıntıları") ile isim benzerliğine dayanan tahminler ("Dikkatli inceleyin")
-  ayrı gösterilir.
-- Her öğe için boyut ve konum; en büyükten küçüğe sıralı.
-- Silme yerine **Çöp Kutusu'na taşıma** — geri alınabilir.
-- Apple sistem bileşenlerine ve hâlâ yüklü uygulamalara **asla dokunmaz**.
+İki kaldırma modu vardır:
 
----
+- **Standart kaldır:** Uygulama paketi, doğrulanmış cache, log, saved state,
+  WebKit ve HTTP storage verileri.
+- **Tamamen kaldır:** Standart kapsama ek olarak doğrulanmış Preferences,
+  Application Support ve uygulamaya özel Containers verileri.
 
-## Güvenlik
+Paylaşılan veya sahipliği kanıtlanamayan dosyalar otomatik seçilmez. Uygulama
+paketi Çöp'e taşınamazsa ilişkili verilere dokunulmaz.
 
-maClean güvenliği önceleyecek şekilde tasarlandı:
+### Eski Kalıntıları Tara
 
-- **Kalıcı silme yok.** Her şey Çöp Kutusu'na taşınır; yanlışlıkla bir şey
-  seçtiyseniz Çöp'ten kurtarabilirsiniz.
-- **Varsayılan olarak hiçbir şey seçili gelmez.** Ne taşınacağına siz karar
-  verirsiniz.
-- **Apple bileşenleri korunur.** `com.apple.*` ile başlayan hiçbir şey ve
-  `/System` alanı asla değerlendirilmez.
-- **Yüklü uygulamalar korunur.** Hâlâ `/Applications` içinde olan bir
-  uygulamanın verisi (yardımcı süreçleri ve güncelleyicileri dâhil) öksüz
-  sayılmaz.
-- Yalnızca kullanıcı seviyesi `~/Library` taranır; yönetici (sudo) izni
-  gerektiren sistem konumlarına dokunulmaz.
+`~/Library` altındaki eski adayları güvenlik-öncelikli kurallarla tarar.
+Heuristik sonuçlar hiçbir zaman otomatik seçilmez. Son 30 günde değişmiş,
+okunamayan veya paylaşılan öğeler korunur.
 
----
+`Group Containers` ve `Application Scripts`, güvenli biçimde tek bir silinmiş
+uygulamaya bağlanamadıkları için eski heuristik taramada önerilmez.
 
-## Kurulum
+## Güvenlik yaklaşımı
 
-### Seçenek A — Hazır uygulamayı indir (en kolay)
+- Kalıcı silme yoktur.
+- Sistem uygulamaları ve maClean'in kendisi kaldırılamaz.
+- Sembolik link uygulamalar reddedilir.
+- Taşıma öncesi yol, inode ve değiştirilme bilgileri yeniden doğrulanır.
+- Çalışan uygulamalar kapatılmadan kaldırma başlamaz.
+- Paylaşılan application-group verisi yalnız tek uygulamaya ait olduğu
+  kanıtlanırsa tam kaldırmaya dahil edilir.
+- Erişilemeyen konumlar sessizce başarılı sayılmaz; arayüzde eksik tarama
+  uyarısı gösterilir.
 
-> **Gereksinim:** Apple Silicon (M1/M2/M3/M4) Mac. Hazır uygulama arm64 için
-> paketlenmiştir; **Intel Mac'lerde çalışmaz** — Intel kullanıyorsanız aşağıdaki
-> **Seçenek B** ile kaynaktan çalıştırın.
+0.1.1 ve daha eski sürümler için [güvenlik uyarısını](SECURITY.md) okuyun.
 
-1. [Releases](../../releases) sayfasından en son
-   **`maClean-0.1.1-macos-arm64.zip`** dosyasını indirin ve çıkarın.
-2. `maClean.app`'i `Uygulamalar` klasörüne taşıyın.
-3. **İlk açılışta Gatekeeper uyarısı** göreceksiniz. Bunun nedeni uygulamanın
-   ücretli bir Apple Developer sertifikasıyla imzalanmamış olmasıdır (açık
-   kaynak, ücretsiz bir proje). Uygulama güvenlidir; kaynağı bu depodadır.
-   Açmak için:
-   - **maClean.app**'e sağ tıklayın → **Aç** → çıkan pencerede tekrar **Aç**.
-   - Veya: **Sistem Ayarları → Gizlilik ve Güvenlik** → aşağıda "maClean
-     engellendi" uyarısının yanındaki **Yine de Aç**'a tıklayın.
-   - Bunu yalnızca bir kez yapmanız yeterlidir; sonraki açılışlar normaldir.
+## Yerel envanter ve gizlilik
 
-### Seçenek B — Kaynaktan çalıştır
+maClean, daha önce gördüğü ve kendi üzerinden kaldırdığı uygulamaları
+hatırlayabilmek için aşağıdaki yerel dosyayı kullanır:
 
-Python 3.10+ gerektirir (geliştirme Python 3.14 ile yapıldı).
+```text
+~/Library/Application Support/maClean/state-v1.json
+```
+
+Bu dosyada yalnız uygulama adı, bundle kimliği, uygulama yolu, yardımcı
+kimlikler, okunabilen application-group değerleri ve görülme zamanları tutulur.
+Dosya içerikleri kaydedilmez ve herhangi bir sunucuya gönderilmez.
+
+## Hazır uygulama
+
+[Releases](../../releases) sayfasından Mac mimarinize uygun ZIP dosyasını ve
+yanındaki `.sha256` checksum dosyasını indirin.
+
+Ücretsiz proje Apple Developer sertifikasıyla imzalanıp notarize edilmediği
+için ilk açılışta Gatekeeper uyarısı çıkabilir:
+
+1. `maClean.app` dosyasına sağ tıklayın ve **Aç** seçeneğini kullanın.
+2. Gerekirse **Sistem Ayarları → Gizlilik ve Güvenlik → Yine de Aç** yolunu
+   izleyin.
+
+Bu uyarı kaynak kodunun veya ZIP bütünlüğünün doğrulanmadığı anlamına gelmez.
+Release hattı paketi ad-hoc imzalar, açılan ZIP üzerinde kod imzasını doğrular
+ve SHA-256 checksum üretir.
+
+## Kaynaktan çalıştırma
+
+Python 3.10 veya üzeri gereklidir.
 
 ```bash
-git clone <bu-depo-url>
+git clone https://github.com/sayweer/maClean.git
 cd maClean
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-python3 main.py
+python -m pip install -r requirements.txt
+python main.py
 ```
 
----
+## Geliştirme
 
-## Kullanım
+```bash
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
 
-1. **Taramayı Başlat**'a tıklayın. maClean yüklü uygulamalarınızı ve
-   `~/Library` kalıntılarını tarar (genellikle birkaç saniye).
-2. Sonuçları inceleyin. "Uygulama kalıntıları" bölümü yüksek güvenlidir;
-   "Dikkatli inceleyin" bölümü ise isim tahminine dayanır — burada hâlâ
-   kullandığınız araçların (ör. paket yöneticisi önbellekleri) çıkabileceğini
-   unutmayın.
-3. Silmek istediğiniz öğelerin kutularını işaretleyin (bölüm başlığındaki
-   **Tümünü seç** / **Temizle** ile toplu seçim yapabilirsiniz).
-4. **Seçilenleri Çöp'e Taşı**'ya tıklayın ve onaylayın.
-5. Fikrinizi değiştirirseniz dosyaları Çöp Kutusu'ndan geri alabilirsiniz.
+Doğrulanmış yerel release oluşturmak için:
 
----
+```bash
+bash scripts/build_release.sh
+```
 
-## Sorun Giderme
+Betik PyInstaller paketini üretir, ad-hoc imzalar, AppleDouble girdisi
+içermeyen ZIP oluşturur, sembolik linkleri ve açılan paketin kod imzasını
+doğrular, smoke test çalıştırır ve SHA-256 checksum yazar.
 
-**Bazı klasörler taranamıyor / eksik görünüyor.**
-macOS gizlilik koruması (TCC) nedeniyle bazı konumlara erişim kısıtlı olabilir.
-Daha kapsamlı tarama için **Sistem Ayarları → Gizlilik ve Güvenlik → Tam Disk
-Erişimi** altından maClean'e (veya kaynaktan çalıştırıyorsanız Terminal'e) izin
-verebilirsiniz. Erişilemeyen öğeler zaten sessizce atlanır, uygulama çökmez.
+## Bilinen sınırlamalar
 
----
-
-## Bilinen Sınırlamalar
-
-- İsim bazlı ("Dikkatli inceleyin") eşleştirme %100 kesin değildir; bu yüzden
-  ayrı bir bölümde gösterilir ve varsayılan olarak seçili gelmez.
-- Bir uygulamanın yardımcı bileşeninin kendi kimliğiyle bıraktığı nadir
-  kalıntılar tespit edilemeyebilir.
-- Çok büyük önbellek klasörlerinde boyut hesaplama birkaç saniye sürebilir.
-
----
-
-## Yol Haritası (v1 sonrası)
-
-- Tarayıcı önbelleği, eski loglar ve geliştirici araçları için ayrı temizlik
-  kategorileri
-- Yinelenen (duplicate) dosya bulucu
-- GitHub Actions ile otomatik build ve release
-- (Opsiyonel) kod imzalama ve notarization
-
----
+- Ücretsiz dağıtım nedeniyle notarization yoktur.
+- Başka uygulamalar tarafından paylaşılan container'lar otomatik temizlenmez.
+- İzin gerektiren konumlar için Tam Disk Erişimi gerekebilir.
+- Ad benzerliği tek başına sahiplik kanıtı değildir ve varsayılan olarak
+  seçilmez.
+- Yönetici yetkisi yükseltilmez; `/Applications` altındaki bazı paketler macOS
+  izinleri nedeniyle taşınamayabilir.
 
 ## Katkı
 
-Geliştirme bağımlılıkları için `requirements-dev.txt` kullanın ve testleri
-çalıştırın:
-
-```bash
-pip install -r requirements-dev.txt
-pytest
-```
-
-Uygulamayı `.app` olarak paketlemek için:
-
-```bash
-pyinstaller maclean.spec --noconfirm
-# çıktı: dist/maClean.app
-```
-
----
+Hata raporlarında özel dosya içeriği veya kişisel tam yollar paylaşmayın.
+Güvenlik sorunları için [SECURITY.md](SECURITY.md) yönergelerini izleyin.
 
 ## Lisans
 
-[MIT](LICENSE) — dilediğiniz gibi kullanın, değiştirin, paylaşın.
+[MIT](LICENSE)

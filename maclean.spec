@@ -5,7 +5,13 @@ customtkinter tema JSON'ları ve fontları pakete elle dahil edilir; aksi halde
 paketlenen .app açıldığında tema bozuk/varsayılan görünür (bilinen tuzak).
 """
 
+import re
+from pathlib import Path
+
 from PyInstaller.utils.hooks import collect_data_files
+
+version_text = (Path(SPECPATH) / "maclean" / "__init__.py").read_text()
+__version__ = re.search(r'__version__ = "([^"]+)"', version_text).group(1)
 
 # customtkinter'ın tema/asset dosyalarını topla (kritik).
 datas = collect_data_files("customtkinter")
@@ -61,8 +67,8 @@ app = BUNDLE(
     info_plist={
         "CFBundleName": "maClean",
         "CFBundleDisplayName": "maClean",
-        "CFBundleShortVersionString": "0.1.1",
-        "CFBundleVersion": "0.1.1",
+        "CFBundleShortVersionString": __version__,
+        "CFBundleVersion": __version__,
         "NSHumanReadableCopyright": "© 2026 Seyit — MIT License",
         "NSHighResolutionCapable": True,
     },

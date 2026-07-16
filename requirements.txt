@@ -1,2 +1,2 @@
-customtkinter
-send2trash
+customtkinter==6.0.0
+Send2Trash==2.1.0

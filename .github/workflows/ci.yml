@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Verify dependencies
+        run: python -m pip check
+      - name: Compile
+        run: python -m compileall -q main.py maclean tests
+      - name: Test
+        run: python -m pytest -q
+
+  package:
+    runs-on: macos-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Build and verify release
+        run: bash scripts/build_release.sh
+      - name: Upload verified package
+        uses: actions/upload-artifact@v4
+        with:
+          name: maclean-${{ runner.arch }}
+          path: |
+            dist/maClean-*.zip
+            dist/maClean-*.zip.sha256
+          if-no-files-found: error
