@@ -26,6 +26,10 @@ doğrulanır.
 Paylaşılan veya sahipliği kanıtlanamayan dosyalar otomatik seçilmez. Uygulama
 paketi Çöp'e taşınamazsa ilişkili verilere dokunulmaz.
 
+Uzun sonuç listeleri native bir tablo kullanır. Satır ayrıntıları tablonun
+altındaki panelde gösterilir; seçim sütununa tıklayabilir veya klavyeden
+**Space** ile seçim yapabilirsiniz. Sütun başlıkları sonuçları sıralar.
+
 ### Eski Kalıntıları Tara
 
 `~/Library` altındaki eski adayları güvenlik-öncelikli kurallarla tarar.
@@ -97,6 +101,7 @@ python main.py
 source .venv/bin/activate
 python -m pip install -r requirements-dev.txt
 python -m pytest -q
+python scripts/benchmark_ui.py --rows 200
 ```
 
 Doğrulanmış yerel release oluşturmak için:

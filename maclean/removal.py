@@ -80,15 +80,23 @@ def _entry_metadata(path: Path) -> tuple[int | None, datetime, tuple[ScanIssue, 
 
 def _group_owners(
     applications: list[ApplicationRecord],
+    target_groups: frozenset[str],
 ) -> dict[str, set[str]]:
+    if not target_groups:
+        return {}
     owners: dict[str, set[str]] = {}
     for application in applications:
+        # System protectors cannot share a third-party application group because
+        # group identifiers are scoped to the signing team. Avoid hundreds of
+        # unnecessary codesign subprocesses on every plan build.
+        if not application.selectable:
+            continue
         enriched = (
             application
             if application.application_groups
             else enrich_application_groups(application)
         )
-        for group in enriched.application_groups:
+        for group in set(enriched.application_groups) & target_groups:
             owners.setdefault(group.casefold(), set()).add(enriched.bundle_id)
     return owners
 
@@ -115,7 +123,10 @@ def build_removal_plan(
         _normalize(application.name),
         _normalize(application.path.stem),
     }
-    group_owners = _group_owners(installed_applications)
+    target_groups = frozenset(
+        group.casefold() for group in application.application_groups
+    )
+    group_owners = _group_owners(installed_applications, target_groups)
     issues: list[ScanIssue] = []
     items: list[RemovalItem] = []
 

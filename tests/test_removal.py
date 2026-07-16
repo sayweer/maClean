@@ -169,6 +169,40 @@ def test_running_application_aborts_before_any_move(
     assert "çalışıyor" in result.aborted_reason
 
 
+def test_plan_skips_unnecessary_system_entitlement_scans(
+    tmp_path, app_bundle_factory, monkeypatch
+):
+    app_path = app_bundle_factory(
+        tmp_path / "Applications", "Foo.app", "com.example.foo", "Foo",
+    )
+    app = read_application(app_path)
+    protectors = [
+        ApplicationRecord(
+            bundle_id=f"com.apple.system{index}",
+            name=f"System {index}",
+            path=Path(f"/System/Applications/System{index}.app"),
+            selectable=False,
+        )
+        for index in range(100)
+    ]
+    calls = []
+
+    def enrich(record):
+        calls.append(record.bundle_id)
+        return record
+
+    monkeypatch.setattr(removal, "enrich_application_groups", enrich)
+
+    removal.build_removal_plan(
+        app,
+        RemovalMode.STANDARD,
+        [app, *protectors],
+        library_root=tmp_path / "Library",
+    )
+
+    assert calls == [app.bundle_id]
+
+
 def test_application_is_moved_before_residues(
     tmp_path, app_bundle_factory, residue_factory, monkeypatch
 ):

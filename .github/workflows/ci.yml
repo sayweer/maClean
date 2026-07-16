@@ -27,6 +27,9 @@ jobs:
         run: python -m compileall -q main.py maclean tests
       - name: Test
         run: python -m pytest -q
+      - name: UI render budget
+        if: matrix.python-version == '3.14'
+        run: python scripts/benchmark_ui.py --rows 200
 
   package:
     runs-on: macos-latest
