@@ -90,8 +90,13 @@ def _application_groups(app_path: Path) -> tuple[str, ...]:
               if (index := data.find(marker)) >= 0]
     if not starts:
         return ()
+    payload = data[min(starts):]
+    if payload.startswith((b"<?xml", b"<plist")):
+        end = payload.find(b"</plist>")
+        if end >= 0:
+            payload = payload[: end + len(b"</plist>")]
     try:
-        entitlements = plistlib.loads(data[min(starts):])
+        entitlements = plistlib.loads(payload)
     except Exception:
         return ()
     groups = entitlements.get("com.apple.security.application-groups", [])

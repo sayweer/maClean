@@ -82,6 +82,40 @@ def test_shared_group_is_protected_when_another_app_owns_it(
     assert item.evidence is EvidenceLevel.SHARED_OR_UNKNOWN
 
 
+def test_exclusive_group_is_selected_only_in_full_mode(
+    tmp_path, app_bundle_factory, residue_factory
+):
+    app_path = app_bundle_factory(
+        tmp_path / "Applications", "Foo.app", "com.example.foo", "Foo",
+    )
+    base = read_application(app_path)
+    app = replace(base, application_groups=("group.com.example.foo",))
+    library = tmp_path / "Library"
+    residue_factory(
+        library, "Group Containers", "group.com.example.foo", size=50,
+    )
+
+    standard = removal.build_removal_plan(
+        app, RemovalMode.STANDARD, [app], library_root=library,
+    )
+    full = removal.build_removal_plan(
+        app, RemovalMode.FULL, [app], library_root=library,
+    )
+
+    standard_item = next(
+        item for item in standard.items
+        if item.category is ResidueCategory.GROUP_CONTAINERS
+    )
+    full_item = next(
+        item for item in full.items
+        if item.category is ResidueCategory.GROUP_CONTAINERS
+    )
+    assert standard_item.selected_by_default is False
+    assert standard_item.selectable is False
+    assert full_item.selected_by_default is True
+    assert full_item.selectable is True
+
+
 def test_application_failure_prevents_residue_moves(
     tmp_path, app_bundle_factory, residue_factory, monkeypatch
 ):
@@ -108,6 +142,31 @@ def test_application_failure_prevents_residue_moves(
     assert result.application_moved is False
     assert len(calls) == 1
     assert calls[0] == [app.path]
+
+
+def test_running_application_aborts_before_any_move(
+    tmp_path, app_bundle_factory, residue_factory, monkeypatch
+):
+    app, library = _setup_app_and_library(
+        tmp_path, app_bundle_factory, residue_factory,
+    )
+    plan = removal.build_removal_plan(
+        app, RemovalMode.STANDARD, [app], library_root=library,
+    )
+    monkeypatch.setattr(removal, "is_application_running", lambda _app: True)
+    monkeypatch.setattr(
+        removal.trash,
+        "move_to_trash",
+        lambda _paths: (_ for _ in ()).throw(AssertionError("çağrılmamalı")),
+    )
+
+    result = removal.execute_removal(
+        plan,
+        state_store=StateStore(tmp_path / "state.json"),
+    )
+
+    assert result.application_moved is False
+    assert "çalışıyor" in result.aborted_reason
 
 
 def test_application_is_moved_before_residues(

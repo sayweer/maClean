@@ -115,6 +115,20 @@ def test_s3_apple_prefixed_never_orphaned(tmp_path, residue_factory):
     assert orphans == []
 
 
+def test_team_prefixed_apple_data_is_never_orphaned(tmp_path, residue_factory):
+    lib = tmp_path / "Library"
+    residue_factory(
+        lib,
+        "Preferences",
+        "TEAM123.systemgroup.com.apple.shared.plist",
+        is_dir=False,
+    )
+
+    orphans = scanner.find_orphans(set(), set(), library_root=lib)
+
+    assert orphans == []
+
+
 def test_s4_name_based_matches_installed_not_orphan(tmp_path, residue_factory):
     """Senaryo 4: yüklü uygulamayla fuzzy eşleşen isim bazlı klasör öksüz değil."""
     lib = tmp_path / "Library"
@@ -220,6 +234,17 @@ def test_cautious_location_non_bundle_name_skipped(tmp_path, residue_factory):
     orphans = scanner.find_orphans(set(), set(), library_root=lib)
 
     assert orphans == []
+
+
+def test_application_scripts_are_excluded_from_legacy_scan(
+    tmp_path, residue_factory
+):
+    lib = tmp_path / "Library"
+    residue_factory(
+        lib, "Application Scripts", "com.example.deletedapp",
+    )
+
+    assert scanner.find_orphans(set(), set(), library_root=lib) == []
 
 
 def test_preferences_plist_orphan_prettifies_name(tmp_path, residue_factory):
