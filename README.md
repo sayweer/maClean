@@ -39,6 +39,9 @@ okunamayan veya paylaşılan öğeler korunur.
 `Group Containers` ve `Application Scripts`, güvenli biçimde tek bir silinmiş
 uygulamaya bağlanamadıkları için eski heuristik taramada önerilmez.
 
+Sonuçlar burada da aynı native tabloda listelenir; tıklayarak veya **Space**
+ile seçim ve sütun başlığıyla sıralama aynı biçimde çalışır.
+
 ## Güvenlik yaklaşımı
 
 - Kalıcı silme yoktur.
