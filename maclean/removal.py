@@ -52,6 +52,34 @@ SHARED_CATEGORIES = frozenset(
 )
 _NON_ALNUM = re.compile(r"[^\w]+", re.UNICODE)
 
+# bundle_id -> (Info.plist mtime_ns, application_groups). Entitlement okuma her
+# uygulama için bir codesign subprocess'i çalıştırır; aynı plan oturumunda mod/
+# uygulama değişiminde tekrarlanmasın diye sonuç Info.plist mtime'ına göre
+# önbelleğe alınır. Paket güncellenirse (mtime değişir) yeniden okunur.
+_GROUP_CACHE: dict[str, tuple[int, tuple[str, ...]]] = {}
+
+
+def _clear_group_cache() -> None:
+    """Testler ve oturum sıfırlaması için grup-entitlement önbelleğini temizler."""
+    _GROUP_CACHE.clear()
+
+
+def _enrich_cached(app: ApplicationRecord) -> ApplicationRecord:
+    """Uygulama gruplarını, Info.plist mtime'ına göre önbellekli doldurur."""
+    if app.application_groups:
+        return app
+    info_plist = app.path / "Contents" / "Info.plist"
+    try:
+        mtime = info_plist.stat().st_mtime_ns
+    except OSError:
+        return enrich_application_groups(app)  # okunamıyorsa önbelleğe alma
+    cached = _GROUP_CACHE.get(app.bundle_id)
+    if cached is not None and cached[0] == mtime:
+        return replace(app, application_groups=cached[1])
+    enriched = enrich_application_groups(app)
+    _GROUP_CACHE[app.bundle_id] = (mtime, enriched.application_groups)
+    return enriched
+
 
 def _normalize(text: str) -> str:
     value = unicodedata.normalize("NFKD", text.casefold())
@@ -65,7 +93,9 @@ def _candidate_identifier(name: str) -> str:
         if lowered.endswith(suffix.casefold()):
             lowered = lowered[: -len(suffix)]
             break
-    return lowered.removeprefix("group.")
+    for prefix in constants.GROUP_CONTAINER_PREFIXES:
+        lowered = lowered.removeprefix(prefix)
+    return lowered
 
 
 def _entry_metadata(path: Path) -> tuple[int | None, datetime, tuple[ScanIssue, ...]]:
@@ -91,11 +121,7 @@ def _group_owners(
         # unnecessary codesign subprocesses on every plan build.
         if not application.selectable:
             continue
-        enriched = (
-            application
-            if application.application_groups
-            else enrich_application_groups(application)
-        )
+        enriched = _enrich_cached(application)
         for group in set(enriched.application_groups) & target_groups:
             owners.setdefault(group.casefold(), set()).add(enriched.bundle_id)
     return owners
@@ -112,7 +138,7 @@ def build_removal_plan(
     if validation_error:
         raise ValueError(validation_error)
     if not application.application_groups:
-        application = enrich_application_groups(application)
+        application = _enrich_cached(application)
     app_identity = file_identity(application.path)
     if app_identity is None:
         raise ValueError("Uygulama paketi artık mevcut değil veya okunamıyor.")

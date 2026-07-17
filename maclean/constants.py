@@ -50,8 +50,10 @@ NAME_FUZZY_LOCATIONS: frozenset[ResidueCategory] = frozenset({
     ResidueCategory.LOGS,
 })
 
-# En az anlaşılan / en riskli konumlar. Burada yalnızca kesin bundle-id
-# eşleşmesi denenir; belirsizlik varsa öğe sessizce atlanır (fuzzy fallback YOK).
+# En riskli / paylaşılan konumlar: tek bir uygulamaya güvenle bağlanamadıkları
+# için eski (heuristik) kalıntı taramasında TAMAMEN atlanırlar. Bunlar yalnızca
+# kaldırma planında (removal.py) uygulama-grup sahipliği kanıtıyla değerlendirilir.
+# scanner tek kaynağı buradan okur.
 CAUTIOUS_LOCATIONS: frozenset[ResidueCategory] = frozenset({
     ResidueCategory.GROUP_CONTAINERS,
     ResidueCategory.APPLICATION_SCRIPTS,
@@ -69,7 +71,21 @@ BUNDLE_ID_PATTERN = re.compile(
 # bundle-id'leri "yüklü" setimizde hiç görünmez. Bu koruma olmadan onların
 # ~/Library kalıntıları YANLIŞLIKLA öksüz işaretlenir. Bu, eşleştirme
 # mantığından bağımsız, en son uygulanan bir "hard override" filtresidir.
-PROTECTED_BUNDLE_PREFIXES = ("com.apple.",)
+# scanner._is_protected_identifier tek kaynağı buradan okur.
+PROTECTED_BUNDLE_PREFIXES = (
+    "com.apple.",
+    "group.com.apple.",
+    "systemgroup.com.apple.",
+)
+
+# Takım-kimliği önekiyle görünen Apple grup kimliği işaretleri, ör.
+# "<TEAMID>.systemgroup.com.apple.shared". Yalnızca Apple'ın gerçek sistem/uygulama
+# grupları eşleşir; "org.thirdparty.com.apple.helper" gibi 3. parti kimlikler
+# (adında com.apple geçse de) eşleşmez ve öksüz olarak görünmeye devam eder.
+PROTECTED_EMBEDDED_MARKERS = (
+    ".systemgroup.com.apple.",
+    ".group.com.apple.",
+)
 
 # Birden fazla ürünün paylaştığı "şemsiye" klasörler (küçük harfle).
 # Kendileri asla aday sayılmaz; bir seviye içine inilip alt klasörler

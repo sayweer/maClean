@@ -63,6 +63,18 @@ class TableModel(Generic[T]):
             self.checked.add(iid)
         return True
 
+    def set_all(self, checked: bool, iids: list[str] | None = None) -> None:
+        """Verilen (veya tüm) seçilebilir satırların işaret durumunu ayarlar."""
+        scope = self.order if iids is None else iids
+        for iid in scope:
+            row = self.rows.get(iid)
+            if row is None or not row.selectable:
+                continue
+            if checked:
+                self.checked.add(iid)
+            else:
+                self.checked.discard(iid)
+
     def checked_payloads(self) -> list[T]:
         return [
             self.rows[iid].payload
@@ -270,6 +282,10 @@ class FastTable(ctk.CTkFrame, Generic[T]):
     ) -> None:
         self.hide_state()
         self.model.set_rows(rows)
+        # Yeni satırlar geldiğinde sıralama sıfırlanır; başlıklardaki oku temizle.
+        self._sort_column = None
+        self._sort_reverse = False
+        self._update_sort_indicator()
         children = self.tree.get_children()
         if children:
             self.tree.delete(*children)
@@ -321,6 +337,25 @@ class FastTable(ctk.CTkFrame, Generic[T]):
 
     def checked_payloads(self) -> list[T]:
         return self.model.checked_payloads()
+
+    def check_visible(self, checked: bool) -> None:
+        """O an görünen (filtrelenmiş) seçilebilir satırları toplu işaretler/temizler.
+
+        Görünmeyen satırlara dokunmaz — filtre dışındakini işaretlemek kullanıcıyı
+        yanıltırdı. İşaret değişince on_check_change ile özet güncellenir.
+        """
+        iids = list(self.tree.get_children())
+        self.model.set_all(checked, iids)
+        for iid in iids:
+            row = self.model.rows.get(iid)
+            if row is None or not row.selectable:
+                continue
+            values = list(self.tree.item(iid, "values"))
+            values[0] = "✓" if iid in self.model.checked else "○"
+            tag = "checked" if iid in self.model.checked else row.tone
+            self.tree.item(iid, values=values, tags=(tag,))
+        if self.on_check_change:
+            self.on_check_change()
 
     def _handle_focus(self, _event=None) -> None:
         if self.on_focus:
@@ -378,3 +413,12 @@ class FastTable(ctk.CTkFrame, Generic[T]):
         self.model.order.sort(key=value, reverse=self._sort_reverse)
         for position, iid in enumerate(self.model.order):
             self.tree.move(iid, "", position)
+        self._update_sort_indicator()
+
+    def _update_sort_indicator(self) -> None:
+        """Aktif sıralama sütununun başlığına yön oku (▲/▼) ekler."""
+        for index, column in enumerate(self.columns):
+            arrow = ""
+            if index == self._sort_column:
+                arrow = " ▼" if self._sort_reverse else " ▲"
+            self.tree.heading(column.key, text=f"{column.title}{arrow}")

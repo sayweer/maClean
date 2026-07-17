@@ -191,6 +191,7 @@ def test_plan_skips_unnecessary_system_entitlement_scans(
         calls.append(record.bundle_id)
         return record
 
+    removal._clear_group_cache()
     monkeypatch.setattr(removal, "enrich_application_groups", enrich)
 
     removal.build_removal_plan(
@@ -201,6 +202,34 @@ def test_plan_skips_unnecessary_system_entitlement_scans(
     )
 
     assert calls == [app.bundle_id]
+
+
+def test_group_enrichment_is_cached_across_plan_builds(
+    tmp_path, app_bundle_factory, residue_factory, monkeypatch
+):
+    """3.2: aynı uygulama için ikinci plan kurulumunda entitlement (codesign)
+    yeniden okunmaz — Info.plist mtime'ı değişmediği sürece önbellek kullanılır."""
+    app_path = app_bundle_factory(
+        tmp_path / "Applications", "Foo.app", "com.example.foo", "Foo",
+    )
+    app = read_application(app_path)
+    library = tmp_path / "Library"
+    residue_factory(library, "Group Containers", "group.com.example.foo", size=50)
+    calls = []
+
+    def enrich(record):
+        calls.append(record.bundle_id)
+        return replace(record, application_groups=("group.com.example.foo",))
+
+    removal._clear_group_cache()
+    monkeypatch.setattr(removal, "enrich_application_groups", enrich)
+
+    for _ in range(2):
+        removal.build_removal_plan(
+            app, RemovalMode.FULL, [app], library_root=library,
+        )
+
+    assert calls == ["com.example.foo"]  # ikinci planda önbellek → tek çağrı
 
 
 def test_application_is_moved_before_residues(

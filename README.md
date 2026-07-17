@@ -33,14 +33,32 @@ altındaki panelde gösterilir; seçim sütununa tıklayabilir veya klavyeden
 ### Eski Kalıntıları Tara
 
 `~/Library` altındaki eski adayları güvenlik-öncelikli kurallarla tarar.
-Heuristik sonuçlar hiçbir zaman otomatik seçilmez. Son 30 günde değişmiş,
-okunamayan veya paylaşılan öğeler korunur.
+Yalnızca kimliği doğrulanabilen kalıntılar seçilebilir; yalnız isim
+benzerliğiyle bulunanlar sahiplik doğrulanamadığı için seçilemez, inceleme
+amacıyla listelenir. Son 30 günde değişmiş, okunamayan veya paylaşılan öğeler
+de korunur. Tarama kurulu uygulama envanterini `/Applications` ve
+`~/Applications` ile sınırlar; Homebrew/DMG gibi başka yolla kurulmuş
+uygulamaların verisi bu nedenle aday görünebilir.
 
 `Group Containers` ve `Application Scripts`, güvenli biçimde tek bir silinmiş
 uygulamaya bağlanamadıkları için eski heuristik taramada önerilmez.
 
 Sonuçlar burada da aynı native tabloda listelenir; tıklayarak veya **Space**
-ile seçim ve sütun başlığıyla sıralama aynı biçimde çalışır.
+ile seçim ve sütun başlığıyla sıralama (aktif sütunda yön oku ile) aynı biçimde
+çalışır. Görünen seçilebilir adayları tek adımda işaretlemek için **Tümünü
+İşaretle**, işaretleri kaldırmak için **Temizle** düğmelerini kullanabilirsiniz.
+Tam Disk Erişimi verilmemişse tarama öncesi bir uyarı bandı çıkar.
+
+### Klavye kısayolları
+
+Menü çubuğundan da erişilebilen kısayollar:
+
+- **⌘O** — `.app` dosyası seç
+- **⌘R** — kurulu uygulamaları yenile
+- **⌘⇧R** — kalıntı taramasını başlat
+- **⌘1 / ⌘2** — sekmeler arası geçiş
+- **⌘F** — aktif sekmenin arama kutusuna odaklan
+- **⌘A** — kalıntı sekmesinde görünen seçilebilir adayları işaretle
 
 ## Güvenlik yaklaşımı
 
@@ -121,9 +139,12 @@ doğrular, smoke test çalıştırır ve SHA-256 checksum yazar.
 
 - Ücretsiz dağıtım nedeniyle notarization yoktur.
 - Başka uygulamalar tarafından paylaşılan container'lar otomatik temizlenmez.
-- İzin gerektiren konumlar için Tam Disk Erişimi gerekebilir.
-- Ad benzerliği tek başına sahiplik kanıtı değildir ve varsayılan olarak
-  seçilmez.
+- İzin gerektiren konumlar için Tam Disk Erişimi gerekebilir; verilmemişse
+  kalıntı sekmesinde proaktif bir uyarı gösterilir.
+- Kurulu uygulama envanteri `/Applications` ve `~/Applications` ile sınırlıdır.
+  Homebrew, `/opt` veya DMG'den çalışan uygulamalar bu listede görünmez.
+- Ad benzerliği tek başına sahiplik kanıtı değildir; bu adaylar seçilemez,
+  yalnızca inceleme için listelenir.
 - Yönetici yetkisi yükseltilmez; `/Applications` altındaki bazı paketler macOS
   izinleri nedeniyle taşınamayabilir.
 

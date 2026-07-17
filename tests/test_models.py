@@ -6,7 +6,6 @@ from pathlib import Path
 from maclean import constants
 from maclean.models import (
     FULL_DISK_ACCESS_CATEGORIES,
-    MatchConfidence,
     OrphanItem,
     ResidueCategory,
     build_trash_banner,
@@ -23,7 +22,6 @@ def test_orphan_item_selection_is_not_domain_state():
         path=Path("/tmp/whatever"),
         size_bytes=1024,
         last_modified=datetime(2024, 1, 1),
-        confidence=MatchConfidence.BUNDLE_ID,
     )
     assert not hasattr(item, "selected")
     assert item.selectable is False
@@ -65,7 +63,6 @@ def _make_item(category: ResidueCategory, name: str = "App") -> OrphanItem:
         path=Path("/tmp") / name,
         size_bytes=1024,
         last_modified=datetime(2024, 1, 1),
-        confidence=MatchConfidence.BUNDLE_ID,
     )
 
 

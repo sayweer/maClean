@@ -26,3 +26,37 @@ def test_table_model_preserves_input_order_for_checked_payloads():
     )
 
     assert model.checked_payloads() == [1, 3]
+
+
+def test_set_all_checks_only_selectable_rows():
+    model = TableModel[str]()
+    model.set_rows(
+        [
+            TableRow("a", ("A",), "a", selectable=True),
+            TableRow("b", ("B",), "b", selectable=False),
+            TableRow("c", ("C",), "c", selectable=True),
+        ]
+    )
+
+    model.set_all(True)
+
+    assert model.checked_payloads() == ["a", "c"]  # korumalı 'b' işaretlenmez
+
+    model.set_all(False)
+
+    assert model.checked_payloads() == []
+
+
+def test_set_all_scoped_to_given_iids():
+    """Filtre dışı satırlar (verilmeyen iid'ler) etkilenmemeli."""
+    model = TableModel[str]()
+    model.set_rows(
+        [
+            TableRow("a", ("A",), "a", selectable=True),
+            TableRow("b", ("B",), "b", selectable=True),
+        ]
+    )
+
+    model.set_all(True, iids=["a"])
+
+    assert model.checked_payloads() == ["a"]

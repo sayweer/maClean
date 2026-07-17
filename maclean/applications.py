@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import plistlib
 import subprocess
@@ -10,6 +11,7 @@ from pathlib import Path
 
 from .models import ApplicationRecord, ScanIssue
 
+logger = logging.getLogger(__name__)
 HOME = Path.home()
 SELECTABLE_ROOTS = (Path("/Applications"), HOME / "Applications")
 PROTECTOR_ROOTS = (
@@ -83,6 +85,7 @@ def _application_groups(app_path: Path) -> tuple[str, ...]:
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
+        logger.debug("codesign çalıştırılamadı: %s", app_path, exc_info=True)
         return ()
 
     data = proc.stdout + proc.stderr
@@ -98,6 +101,7 @@ def _application_groups(app_path: Path) -> tuple[str, ...]:
     try:
         entitlements = plistlib.loads(payload)
     except Exception:
+        logger.warning("Entitlement XML çözümlenemedi: %s", app_path, exc_info=True)
         return ()
     groups = entitlements.get("com.apple.security.application-groups", [])
     if not isinstance(groups, list):
@@ -197,10 +201,28 @@ def validate_removable_application(app: ApplicationRecord) -> str | None:
     return None
 
 
-def is_application_running(app: ApplicationRecord) -> bool:
-    """Seçilen .app içinden çalışan bir executable varsa True döndürür."""
+def _executable_prefixes(app: ApplicationRecord) -> tuple[str, ...]:
+    """Uygulamanın çalışan ikilisinin argv[0] önekleri (ham + çözümlenmiş yol)."""
 
-    executable_root = str(app.path / "Contents" / "MacOS")
+    roots = {app.path / "Contents" / "MacOS"}
+    try:
+        roots.add(app.path.resolve() / "Contents" / "MacOS")
+    except OSError:
+        pass
+    return tuple(f"{root}/" for root in roots)
+
+
+def is_application_running(app: ApplicationRecord) -> bool:
+    """Seçilen .app içinden çalışan bir executable varsa True döndürür.
+
+    `ps -axo command=` çıktısında argv[0] mutlak yol olarak
+    `.app/Contents/MacOS/` altını gösterir; bu yüzden satırın bu önekle
+    BAŞLAMASINA bakılır. Böylece eski substring eşleşmesinin iki hatası da
+    giderilir: yolu yalnızca argüman olarak taşıyan başka süreçler artık
+    yanlış-pozitif üretmez, ve yol boşluk içerse bile önek eşleşmesi kaçmaz.
+    """
+
+    prefixes = _executable_prefixes(app)
     try:
         proc = subprocess.run(
             ["ps", "-axo", "command="],
@@ -212,4 +234,4 @@ def is_application_running(app: ApplicationRecord) -> bool:
     except (OSError, subprocess.TimeoutExpired):
         # Çalışma durumu doğrulanamıyorsa güvenlik gereği kaldırmayı engelle.
         return True
-    return any(executable_root in line for line in proc.stdout.splitlines())
+    return any(line.startswith(prefixes) for line in proc.stdout.splitlines())

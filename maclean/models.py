@@ -25,13 +25,6 @@ class ResidueCategory(Enum):
     APPLICATION_SCRIPTS = "Application Scripts"
 
 
-class MatchConfidence(Enum):
-    """Eski API ile uyumlu, kullanıcıya kesinlik iddiası taşımayan eşleşme türü."""
-
-    BUNDLE_ID = "bundle_id"
-    NAME_FUZZY = "name_fuzzy"
-
-
 class EvidenceLevel(Enum):
     EXPLICIT_REMOVAL = "explicit_removal"
     OBSERVED_MISSING = "observed_missing"
@@ -91,7 +84,6 @@ class OrphanItem:
     path: Path
     size_bytes: int | None
     last_modified: datetime
-    confidence: MatchConfidence
     evidence: EvidenceLevel = EvidenceLevel.EXACT_IDENTIFIER
     selectable: bool = False
     reason: str = ""

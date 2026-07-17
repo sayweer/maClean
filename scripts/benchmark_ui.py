@@ -15,7 +15,6 @@ if str(ROOT) not in sys.path:
 from maclean.gui import App
 from maclean.models import (
     EvidenceLevel,
-    MatchConfidence,
     OrphanItem,
     ResidueCategory,
     ScanReport,
@@ -41,7 +40,6 @@ def run(rows: int) -> tuple[float, int]:
                 ),
                 size_bytes=1024 * (index + 1),
                 last_modified=datetime.now(),
-                confidence=MatchConfidence.BUNDLE_ID,
                 evidence=EvidenceLevel.EXACT_IDENTIFIER,
                 selectable=True,
                 reason=(

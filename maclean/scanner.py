@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import plistlib
 import re
 import unicodedata
 from datetime import datetime, timedelta
@@ -15,7 +14,6 @@ from typing import Callable, Iterable
 from . import constants
 from .models import (
     EvidenceLevel,
-    MatchConfidence,
     OrphanItem,
     ResidueCategory,
     ScanIssue,
@@ -26,51 +24,7 @@ from .state import StateStore
 
 logger = logging.getLogger(__name__)
 RECENT_GRACE_PERIOD = timedelta(days=30)
-UNSAFE_LEGACY_CATEGORIES = frozenset(
-    {ResidueCategory.GROUP_CONTAINERS, ResidueCategory.APPLICATION_SCRIPTS}
-)
 _NON_ALNUM = re.compile(r"[^\w]+", re.UNICODE)
-
-
-def _read_bundle(app_path: Path) -> tuple[str, str] | None:
-    try:
-        with (app_path / "Contents" / "Info.plist").open("rb") as handle:
-            plist = plistlib.load(handle)
-    except (OSError, plistlib.InvalidFileException) as exc:
-        logger.warning("Info.plist okunamadı: %s (%s)", app_path, exc)
-        return None
-    bundle_id = plist.get("CFBundleIdentifier")
-    if not isinstance(bundle_id, str) or not bundle_id:
-        return None
-    name = (
-        plist.get("CFBundleDisplayName")
-        or plist.get("CFBundleName")
-        or app_path.name.removesuffix(".app")
-    )
-    return bundle_id.casefold(), str(name)
-
-
-def discover_installed_apps(
-    app_scan_roots: list[Path] | None = None,
-) -> tuple[set[str], dict[str, str]]:
-    roots = constants.APP_SCAN_ROOTS if app_scan_roots is None else app_scan_roots
-    installed_ids: set[str] = set()
-    name_by_id: dict[str, str] = {}
-    for root in roots:
-        if not root.exists():
-            continue
-        for dirpath, dirnames, _ in os.walk(root):
-            app_dirs = [name for name in dirnames if name.casefold().endswith(".app")]
-            dirnames[:] = [
-                name for name in dirnames if not name.casefold().endswith(".app")
-            ]
-            for app_dir in app_dirs:
-                result = _read_bundle(Path(dirpath) / app_dir)
-                if result:
-                    bundle_id, name = result
-                    installed_ids.add(bundle_id)
-                    name_by_id[bundle_id] = name
-    return installed_ids, name_by_id
 
 
 def _normalize(text: str) -> str:
@@ -100,14 +54,20 @@ def _prettify_bundle_id(bundle_id: str) -> str:
 
 
 def _is_protected_identifier(identifier: str) -> bool:
+    """Apple'a ait bundle/grup kimliklerini korur (tek kaynak: constants).
+
+    Yalnızca gerçek önekler ve takım-kimliği önekli Apple grup işaretleri
+    eşleşir. Adında ortada 'com.apple' geçen 3. parti kimlikler
+    (ör. org.thirdparty.com.apple.helper) korumaya girmez.
+    """
+
     lowered = identifier.casefold()
-    return (
-        lowered.startswith("com.apple.")
-        or lowered.startswith("group.com.apple.")
-        or lowered.startswith("systemgroup.com.apple.")
-        or ".com.apple." in lowered
-        or ".groups.com.apple." in lowered
-    )
+    if any(
+        lowered == prefix.rstrip(".") or lowered.startswith(prefix)
+        for prefix in constants.PROTECTED_BUNDLE_PREFIXES
+    ):
+        return True
+    return any(marker in lowered for marker in constants.PROTECTED_EMBEDDED_MARKERS)
 
 
 def _safe_entries(path: Path, issues: list[ScanIssue]) -> list[os.DirEntry]:
@@ -185,6 +145,7 @@ def scan_orphans(
     progress_callback: Callable[[str], None] | None = None,
     state_store: StateStore | None = None,
     now: datetime | None = None,
+    should_abort: Callable[[], bool] | None = None,
 ) -> ScanReport:
     lib_root = library_root or constants.LIBRARY_ROOT
     current_time = now or datetime.now()
@@ -192,9 +153,14 @@ def scan_orphans(
     issues: list[ScanIssue] = []
     items: list[OrphanItem] = []
     store = state_store or StateStore()
+    # Kanıt seviyesi her aday için sorgulanır; state'i bir kez yükleyip
+    # snapshot'ı geçmek tekrarlı disk okumalarını önler.
+    state_data = store.load()
 
     for category, default_path in constants.SCAN_LOCATIONS.items():
-        if category in UNSAFE_LEGACY_CATEGORIES:
+        if should_abort is not None and should_abort():
+            break
+        if category in constants.CAUTIOUS_LOCATIONS:
             continue
         if progress_callback:
             progress_callback(category.value)
@@ -225,6 +191,10 @@ def scan_orphans(
                 continue
             name = _strip_suffixes(entry.name)
             lowered = name.casefold()
+            # Apple koruması en başta, eşleştirme dalından (bundle-benzeri veya
+            # isim-fuzzy) bağımsız uygulanır — gerçek bir "hard override".
+            if _is_protected_identifier(lowered):
+                continue
             if entry.name.casefold() in constants.KNOWN_TOOL_CACHES:
                 continue
             alias = constants.KNOWN_APP_DATA_ALIASES.get(entry.name.casefold())
@@ -236,8 +206,6 @@ def scan_orphans(
                 and not _looks_like_version(name)
             )
             bundle_id: str | None = lowered if bundle_like else None
-            if bundle_id and _is_protected_identifier(bundle_id):
-                continue
             if bundle_id and (
                 bundle_id in installed_ids
                 or any(bundle_id.startswith(app_id + ".") for app_id in installed_ids)
@@ -265,8 +233,9 @@ def scan_orphans(
             recent = modified >= current_time - RECENT_GRACE_PERIOD
 
             if bundle_id:
-                evidence = store.evidence_for(bundle_id, installed_ids)
-                confidence = MatchConfidence.BUNDLE_ID
+                evidence = store.evidence_for(
+                    bundle_id, installed_ids, data=state_data
+                )
                 display_name = _prettify_bundle_id(name)
                 reason = {
                     EvidenceLevel.EXPLICIT_REMOVAL:
@@ -274,31 +243,32 @@ def scan_orphans(
                     EvidenceLevel.OBSERVED_MISSING:
                         "Uygulama daha önce görülmüştü, artık bulunamıyor.",
                     EvidenceLevel.EXACT_IDENTIFIER:
-                        "Ad bundle kimliği biçiminde; uygulama kurulu listede bulunamadı.",
+                        "Ad bundle kimliği biçiminde; /Applications ve "
+                        "~/Applications içinde bulunamadı. Uygulamayı başka yolla "
+                        "kurduysanız (Homebrew, DMG) bu veri hâlâ kullanımda olabilir.",
                 }[evidence]
             else:
                 evidence = EvidenceLevel.NAME_ONLY
-                confidence = MatchConfidence.NAME_FUZZY
                 display_name = (
                     f"{vendor_prefix} — {name}" if vendor_prefix else name
                 )
-                reason = "Ad kurulu uygulamalarla eşleşmedi; sahiplik doğrulanamadı."
+                reason = (
+                    "Ad kurulu uygulamalarla eşleşmedi; sahiplik doğrulanamadığı "
+                    "için yalnızca inceleme amacıyla listelendi."
+                )
 
+            # NAME_ONLY yalnızca isme dayalı, sahipliği doğrulanamayan bir tahmindir;
+            # asla otomatik seçilebilir yapılmaz (salt-inceleme). Diğer seviyeler
+            # boyut okunabiliyor ve son 30 günde değişmemişse seçilebilir olur.
             selectable = (
                 size is not None
                 and not recent
-                and evidence
-                in {
-                    EvidenceLevel.EXPLICIT_REMOVAL,
-                    EvidenceLevel.OBSERVED_MISSING,
-                    EvidenceLevel.EXACT_IDENTIFIER,
-                    EvidenceLevel.NAME_ONLY,
-                }
+                and evidence is not EvidenceLevel.NAME_ONLY
             )
             if recent and evidence is not EvidenceLevel.EXPLICIT_REMOVAL:
                 reason += " Son 30 günde değiştiği için seçim devre dışı."
             if size is None:
-                reason += " Boyutu okunamadığı için seçim devre dışı."
+                reason += " Boyutu okunamadı (izin sorunu olabilir); seçim devre dışı."
 
             items.append(
                 OrphanItem(
@@ -308,7 +278,6 @@ def scan_orphans(
                     path=path,
                     size_bytes=size,
                     last_modified=modified,
-                    confidence=confidence,
                     evidence=evidence,
                     selectable=selectable,
                     reason=reason,
@@ -317,21 +286,3 @@ def scan_orphans(
             )
     items.sort(key=lambda item: item.size_bytes or -1, reverse=True)
     return ScanReport(tuple(items), tuple(issues))
-
-
-def find_orphans(
-    installed_ids: set[str],
-    installed_names: Iterable[str],
-    library_root: Path | None = None,
-    progress_callback: Callable[[str], None] | None = None,
-) -> list[OrphanItem]:
-    """Eski çağıranlar için liste döndüren uyumluluk sarmalayıcısı."""
-
-    return list(
-        scan_orphans(
-            installed_ids,
-            installed_names,
-            library_root=library_root,
-            progress_callback=progress_callback,
-        ).items
-    )

@@ -73,6 +73,9 @@ class StateStore:
             "path": str(app.path),
             "removed_at": datetime.now().isoformat(),
             "helper_bundle_ids": list(app.helper_bundle_ids),
+            # Kalıntıların bir kısmı taşınamadıysa "tam" değil "kısmi" kaldırma.
+            # Eski kayıtlarda bu alan yoktur ve okurken False sayılır (migrasyon yok).
+            "partial": bool(failed_paths),
             "failed_paths": [
                 {"path": str(path), "error": error} for path, error in failed_paths
             ],
@@ -83,8 +86,12 @@ class StateStore:
         self,
         bundle_id: str,
         current_ids: set[str],
+        data: dict | None = None,
     ) -> EvidenceLevel:
-        data = self.load()
+        # data verilmezse diskten okunur. Tarama gibi çok sayıda aday için
+        # çağrılan yerlerde snapshot bir kez yüklenip geçilir (tekrarlı I/O yok).
+        if data is None:
+            data = self.load()
         if bundle_id in data["explicit_removals"]:
             return EvidenceLevel.EXPLICIT_REMOVAL
         if bundle_id in data["applications"] and bundle_id not in current_ids:

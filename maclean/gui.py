@@ -6,9 +6,12 @@ Treeview. This keeps widget counts nearly constant even with hundreds of rows.
 
 from __future__ import annotations
 
+import logging
+import os
 import queue
 import subprocess
 import threading
+import tkinter as tk
 import unicodedata
 from datetime import datetime
 from pathlib import Path
@@ -37,6 +40,8 @@ from .models import (
 )
 from .state import StateStore
 from .ui_components import FastTable, TableColumn, TableRow
+
+logger = logging.getLogger(__name__)
 
 Color = tuple[str, str]
 
@@ -111,6 +116,9 @@ class App(ctk.CTk):
         self._queue: queue.Queue = queue.Queue()
         self._polling = False
         self._worker_count = 0
+        # Yeni bir tarama isteği bu sayacı artırır; arka planda süren eski
+        # worker kendi neslinin geçersizleştiğini görüp erken çıkar.
+        self._scan_generation = 0
         self._search_after: str | None = None
         self._appearance = ctk.get_appearance_mode()
 
@@ -118,8 +126,10 @@ class App(ctk.CTk):
         self.grid_rowconfigure(1, weight=1)
         self._build_header()
         self._build_tabs()
+        self._build_menu()
         self.after(1000, self._sync_native_theme)
         self._start_app_discovery()
+        self._check_full_disk_access()
 
     # ------------------------------------------------------------------
     # Shell
@@ -409,7 +419,7 @@ class App(ctk.CTk):
             apps, issues = discover_applications()
             self._queue.put(("apps_done", (apps, issues)))
         except Exception as exc:  # noqa: BLE001
-            self._queue.put(("apps_error", str(exc)))
+            self._report_worker_error("apps", exc)
 
     def _on_apps_done(self, payload) -> None:
         apps, issues = payload
@@ -531,7 +541,7 @@ class App(ctk.CTk):
             plan = removal.build_removal_plan(app, mode, self.apps)
             self._queue.put(("plan_done", plan))
         except Exception as exc:  # noqa: BLE001
-            self._queue.put(("plan_error", str(exc)))
+            self._report_worker_error("plan", exc)
 
     def _render_removal_plan(self, plan: RemovalPlan) -> None:
         if self.selected_app and plan.application.path != self.selected_app.path:
@@ -661,7 +671,7 @@ class App(ctk.CTk):
             )
             self._queue.put(("removal_done", result))
         except Exception as exc:  # noqa: BLE001
-            self._queue.put(("removal_error", str(exc)))
+            self._report_worker_error("removal", exc)
 
     def _on_removal_done(self, result: RemovalResult) -> None:
         self.remove_button.configure(state="normal", text="Kaldırmayı Onayla")
@@ -730,12 +740,15 @@ class App(ctk.CTk):
         ctk.CTkLabel(
             intro,
             text=(
-                "Heuristik sonuçlar otomatik seçilmez. Son 30 günde değişen, "
-                "okunamayan ve paylaşılan öğeler korunur."
+                "Yalnızca kimliği doğrulanabilen kalıntılar seçilebilir; isim "
+                "benzerliğiyle bulunanlar inceleme için listelenir. Tarama "
+                "/Applications ve ~/Applications ile sınırlıdır."
             ),
             font=ctk.CTkFont(size=12),
             text_color=MUTED,
             anchor="w",
+            justify="left",
+            wraplength=560,
         ).grid(row=1, column=0, sticky="w", padx=16, pady=(0, 13))
         self.scan_button = self._primary_button(
             intro,
@@ -751,6 +764,32 @@ class App(ctk.CTk):
             padx=16,
         )
 
+        # Tam Disk Erişimi verilmemişse proaktif uyarı bandı (başta gizli).
+        self.fda_banner = ctk.CTkFrame(intro, fg_color=WARNING_SOFT, corner_radius=8)
+        self.fda_banner.grid(
+            row=2, column=0, columnspan=2, sticky="ew", padx=16, pady=(0, 13)
+        )
+        self.fda_banner.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            self.fda_banner,
+            text=(
+                "⚠ Tam Disk Erişimi verilmemiş görünüyor; bazı korumalı konumlar "
+                "(Containers, Group Containers) taranamayabilir."
+            ),
+            font=ctk.CTkFont(size=12),
+            text_color=WARNING,
+            anchor="w",
+            justify="left",
+            wraplength=520,
+        ).grid(row=0, column=0, sticky="w", padx=12, pady=8)
+        self._secondary_button(
+            self.fda_banner,
+            "Ayarları Aç",
+            self._open_full_disk_settings,
+            width=120,
+        ).grid(row=0, column=1, sticky="e", padx=12, pady=8)
+        self.fda_banner.grid_remove()
+
         filters = ctk.CTkFrame(tab, fg_color="transparent")
         filters.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 8))
         filters.grid_columnconfigure(0, weight=1)
@@ -765,6 +804,18 @@ class App(ctk.CTk):
         )
         self.orphan_search.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         self.orphan_search.bind("<KeyRelease>", self._schedule_orphan_filter)
+        self._secondary_button(
+            filters,
+            "Tümünü İşaretle",
+            lambda: self.orphan_table.check_visible(True),
+            width=140,
+        ).grid(row=0, column=1, sticky="e", padx=(0, 6))
+        self._secondary_button(
+            filters,
+            "Temizle",
+            lambda: self.orphan_table.check_visible(False),
+            width=88,
+        ).grid(row=0, column=2, sticky="e", padx=(0, 8))
         self.orphan_filter = ctk.CTkSegmentedButton(
             filters,
             values=["Tümü", "Seçilebilir", "Korunan"],
@@ -776,7 +827,7 @@ class App(ctk.CTk):
             text_color=TEXT,
             height=38,
         )
-        self.orphan_filter.grid(row=0, column=1, sticky="e")
+        self.orphan_filter.grid(row=0, column=3, sticky="e")
         self.orphan_filter.set("Tümü")
 
         content = ctk.CTkFrame(tab, fg_color="transparent")
@@ -818,6 +869,11 @@ class App(ctk.CTk):
             anchor="w",
         )
         self.orphan_summary.grid(row=0, column=0, sticky="w")
+        # Belirsiz süreli işlem göstergesi (tarama sürerken görünür).
+        self.orphan_progress = ctk.CTkProgressBar(
+            footer, mode="indeterminate", width=150, height=6,
+            progress_color=PRIMARY, fg_color=SURFACE_SUBTLE,
+        )
         self.cleanup_button = self._destructive_button(
             footer,
             "Seçilenleri Çöp'e Taşı",
@@ -825,7 +881,7 @@ class App(ctk.CTk):
             width=196,
         )
         self.cleanup_button.configure(state="disabled")
-        self.cleanup_button.grid(row=0, column=1, sticky="e")
+        self.cleanup_button.grid(row=0, column=2, sticky="e")
 
     def _schedule_orphan_filter(self, _event=None) -> None:
         if self._search_after:
@@ -840,9 +896,17 @@ class App(ctk.CTk):
             "Tarama sürüyor",
             "Kurulu uygulamalar ve güvenli Library konumları karşılaştırılıyor.",
         )
-        self._run_worker(self._orphan_scan_worker)
+        self.orphan_progress.grid(row=0, column=1, sticky="e", padx=8)
+        self.orphan_progress.start()
+        self._scan_generation += 1
+        generation = self._scan_generation
+        self._run_worker(lambda: self._orphan_scan_worker(generation))
 
-    def _orphan_scan_worker(self) -> None:
+    def _stop_orphan_progress(self) -> None:
+        self.orphan_progress.stop()
+        self.orphan_progress.grid_remove()
+
+    def _orphan_scan_worker(self, generation: int) -> None:
         try:
             apps, app_issues = discover_applications()
             ids = {
@@ -855,14 +919,18 @@ class App(ctk.CTk):
                 ids,
                 names,
                 state_store=self.state_store,
+                should_abort=lambda: generation != self._scan_generation,
             )
+            if generation != self._scan_generation:
+                return  # daha yeni bir tarama başladı; bu sonucu at
+
             combined = ScanReport(
                 report.items,
                 (*app_issues, *report.issues),
             )
             self._queue.put(("scan_done", (combined, apps)))
         except Exception as exc:  # noqa: BLE001
-            self._queue.put(("scan_error", str(exc)))
+            self._report_worker_error("scan", exc)
 
     def _on_scan_done(self, payload) -> None:
         report, apps = payload
@@ -871,6 +939,7 @@ class App(ctk.CTk):
         self.apps = apps
         self.state_store.update_inventory([app for app in apps if app.selectable])
         self.scan_button.configure(state="normal", text="Yeniden Tara")
+        self._stop_orphan_progress()
         self._render_orphans()
 
     def _filtered_orphans(self) -> list[OrphanItem]:
@@ -1012,7 +1081,7 @@ class App(ctk.CTk):
             result = cleanup.cleanup_orphans(items, selected)
             self._queue.put(("cleanup_done", result))
         except Exception as exc:  # noqa: BLE001
-            self._queue.put(("cleanup_error", str(exc)))
+            self._report_worker_error("cleanup", exc)
 
     def _on_cleanup_done(self, result) -> None:
         self.cleanup_button.configure(text="Seçilenleri Çöp'e Taşı")
@@ -1058,6 +1127,11 @@ class App(ctk.CTk):
     # ------------------------------------------------------------------
     # Queue and states
     # ------------------------------------------------------------------
+
+    def _report_worker_error(self, kind: str, exc: Exception) -> None:
+        """Worker istisnasını izlenebilir biçimde loglar ve UI'ya iletir."""
+        logger.exception("%s worker hatası", kind)
+        self._queue.put((f"{kind}_error", str(exc)))
 
     def _run_worker(self, target) -> None:
         self._worker_count += 1
@@ -1137,6 +1211,7 @@ class App(ctk.CTk):
 
     def _on_scan_error(self, message: str) -> None:
         self.scan_button.configure(state="normal", text="Yeniden Tara")
+        self._stop_orphan_progress()
         self.orphan_table.set_rows([])
         self.orphan_table.show_state(
             "Tarama tamamlanamadı",
@@ -1307,7 +1382,6 @@ class App(ctk.CTk):
     ) -> None:
         dialog = ctk.CTkToplevel(self)
         dialog.title(title)
-        dialog.geometry("520x290")
         dialog.resizable(False, False)
         dialog.configure(fg_color=BG)
         dialog.transient(self)
@@ -1372,6 +1446,7 @@ class App(ctk.CTk):
         dialog.bind("<Return>", lambda _event: confirm())
         dialog.protocol("WM_DELETE_WINDOW", close)
         confirm_button.focus_set()
+        self._size_dialog_to_content(dialog, card, min_width=520)
         self._center_dialog(dialog)
 
     def _show_message(
@@ -1384,7 +1459,6 @@ class App(ctk.CTk):
     ) -> None:
         dialog = ctk.CTkToplevel(self)
         dialog.title(title)
-        dialog.geometry("540x300")
         dialog.resizable(False, False)
         dialog.configure(fg_color=BG)
         dialog.transient(self)
@@ -1431,7 +1505,16 @@ class App(ctk.CTk):
         dialog.bind("<Return>", lambda _event: close())
         dialog.protocol("WM_DELETE_WINDOW", close)
         button.focus_set()
+        self._size_dialog_to_content(dialog, card, min_width=540)
         self._center_dialog(dialog)
+
+    @staticmethod
+    def _size_dialog_to_content(dialog, card, *, min_width: int) -> None:
+        """Diyaloğu içeriğinin doğal boyutuna oturtur (uzun metinde kırpma olmaz)."""
+        dialog.update_idletasks()
+        width = max(min_width, card.winfo_reqwidth() + 36)
+        height = card.winfo_reqheight() + 36
+        dialog.geometry(f"{width}x{height}")
 
     def _center_dialog(self, dialog) -> None:
         self.update_idletasks()
@@ -1462,3 +1545,120 @@ class App(ctk.CTk):
             ):
                 table.refresh_theme()
         self.after(1000, self._sync_native_theme)
+
+    # ------------------------------------------------------------------
+    # Native menu, keyboard shortcuts, Full Disk Access
+    # ------------------------------------------------------------------
+
+    def _build_menu(self) -> None:
+        menubar = tk.Menu(self)
+
+        app_menu = tk.Menu(menubar, tearoff=0)
+        app_menu.add_command(label="maClean Hakkında", command=self._show_about)
+        menubar.add_cascade(label="maClean", menu=app_menu)
+
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(
+            label=".app Seç…", command=self._choose_external_app, accelerator="Cmd+O"
+        )
+        menubar.add_cascade(label="Dosya", menu=file_menu)
+
+        view_menu = tk.Menu(menubar, tearoff=0)
+        view_menu.add_command(
+            label="Uygulama Kaldır",
+            command=lambda: self.tabs.set("Uygulama Kaldır"),
+            accelerator="Cmd+1",
+        )
+        view_menu.add_command(
+            label="Eski Kalıntıları Tara",
+            command=lambda: self.tabs.set("Eski Kalıntıları Tara"),
+            accelerator="Cmd+2",
+        )
+        menubar.add_cascade(label="Görünüm", menu=view_menu)
+
+        action_menu = tk.Menu(menubar, tearoff=0)
+        action_menu.add_command(
+            label="Uygulamaları Yenile",
+            command=self._start_app_discovery,
+            accelerator="Cmd+R",
+        )
+        action_menu.add_command(
+            label="Kalıntı Taramasını Başlat",
+            command=self._start_orphan_scan,
+            accelerator="Cmd+Shift+R",
+        )
+        menubar.add_cascade(label="İşlem", menu=action_menu)
+
+        try:
+            self.configure(menu=menubar)
+        except tk.TclError:
+            logger.warning("Menü çubuğu kurulamadı", exc_info=True)
+
+        self.bind_all("<Command-o>", lambda _e: self._choose_external_app())
+        self.bind_all("<Command-r>", lambda _e: self._start_app_discovery())
+        self.bind_all("<Command-R>", lambda _e: self._start_orphan_scan())
+        self.bind_all("<Command-Key-1>", lambda _e: self.tabs.set("Uygulama Kaldır"))
+        self.bind_all(
+            "<Command-Key-2>", lambda _e: self.tabs.set("Eski Kalıntıları Tara")
+        )
+        self.bind_all("<Command-f>", self._focus_active_search)
+        self.bind_all("<Command-a>", self._select_all_active)
+
+    def _focus_active_search(self, _event=None) -> str:
+        """Cmd+F: aktif sekmenin arama kutusuna odaklanır."""
+        if self.tabs.get() == "Eski Kalıntıları Tara":
+            self.orphan_search.focus_set()
+        else:
+            self.app_search.focus_set()
+        return "break"
+
+    def _select_all_active(self, _event=None):
+        """Cmd+A: kalıntı sekmesinde görünen seçilebilirleri toplu işaretler.
+
+        Odak bir metin kutusundaysa müdahale etmez; oradaki Cmd+A varsayılan
+        'tümünü seç' davranışını korur.
+        """
+        focused = self.focus_get()
+        if focused is not None and focused.winfo_class() == "Entry":
+            return None
+        if self.tabs.get() == "Eski Kalıntıları Tara":
+            self.orphan_table.check_visible(True)
+        return "break"
+
+    def _show_about(self) -> None:
+        self._show_message(
+            "maClean Hakkında",
+            f"maClean {__version__}\nYerel, imzasız uygulama kaldırıcı.",
+            recovery="Tüm işlemler Çöp Kutusu'na taşır; kalıcı silme yapılmaz.",
+        )
+
+    def _has_full_disk_access(self) -> bool:
+        """TCC korumalı bir konumu listelemeyi deneyerek FDA'yı en iyi çabayla saptar.
+
+        PermissionError yalnızca Tam Disk Erişimi verilmemişken oluşur; yol yoksa
+        veya başka bir hata olursa banner gösterilmez (yanlış-pozitif olmaz).
+        """
+        probe = Path.home() / "Library" / "Application Support" / "com.apple.TCC"
+        try:
+            with os.scandir(probe):
+                return True
+        except PermissionError:
+            return False
+        except OSError:
+            return True
+
+    def _check_full_disk_access(self) -> None:
+        if not self._has_full_disk_access():
+            self.fda_banner.grid()
+
+    def _open_full_disk_settings(self) -> None:
+        try:
+            subprocess.Popen(
+                [
+                    "open",
+                    "x-apple.systempreferences:com.apple.preference.security"
+                    "?Privacy_AllFiles",
+                ]
+            )
+        except OSError:
+            logger.warning("Sistem Ayarları açılamadı", exc_info=True)

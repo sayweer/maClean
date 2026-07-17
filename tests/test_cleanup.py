@@ -4,7 +4,6 @@ from pathlib import Path
 from maclean import cleanup
 from maclean.models import (
     EvidenceLevel,
-    MatchConfidence,
     OrphanItem,
     ResidueCategory,
     file_identity,
@@ -19,7 +18,6 @@ def _item(path: Path, selectable: bool = True) -> OrphanItem:
         path=path,
         size_bytes=1,
         last_modified=datetime.now(),
-        confidence=MatchConfidence.BUNDLE_ID,
         evidence=EvidenceLevel.EXACT_IDENTIFIER,
         selectable=selectable,
         identity=file_identity(path),
